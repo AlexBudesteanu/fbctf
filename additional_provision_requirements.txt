@@ -1,0 +1,3 @@
+sudo apt-get install libmysqlclient-dev
+sudo pip install setuptools --upgrade
++ the shell for upgrading CURL

@@ -1,0 +1,9 @@
+setup.py
+ctf_game_server/__init__.py
+ctf_game_server/config.py
+ctf_game_server/server.py
+ctf_game_server.egg-info/PKG-INFO
+ctf_game_server.egg-info/SOURCES.txt
+ctf_game_server.egg-info/dependency_links.txt
+ctf_game_server.egg-info/requires.txt
+ctf_game_server.egg-info/top_level.txt
