@@ -6,19 +6,18 @@
     Modified Flask demo app showing localization with Flask-Babel and PhraseApp
 """
 
-from flask import Flask, request, session, g, redirect, url_for, abort, \
-     render_template, flash
-from flask import jsonify
+from flask import Flask, Response, abort, jsonify, stream_with_context, send_file, request, render_template
 from flask_mysqldb import MySQL
 import docker as docker_sdk
 from functools import wraps
+import requests
 
 # Create our little application :)
 app = Flask(__name__)
 # Read config
 app.config.from_pyfile('config.py')
 mysql = MySQL(app)
-docker = docker_sdk.from_env()
+docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
 
 # Decorator Function
 def check_user(func):
@@ -39,13 +38,29 @@ def req_teardown(error):
     """Closes the database again at the end of the request."""
     pass
 
-def _assert_login():
-    logged_in = True if docker.info().get("Username") else False
-    return logged_in
-
 def _docker_login():
     rv = docker.login(username=app.config['DOCKER_USER'], password=app.config['DOCKER_PASSWORD'])
     print(rv)
+
+def _get_image_tags(user, password, api_endpoint):
+    response = requests.post("{endpoint}/users/login/". format(endpoint=api_endpoint), data={'username': user, 'password': password})
+    token = response.json().get('token')
+    response = requests.get('{endpoint}/repositories/{username}/?page_size=10000'.format(endpoint = api_endpoint, username=user),
+                            headers={'Authorization': 'JWT {token}'.format(token=token)})
+    results = response.json().get('results')
+    full_image_list = []
+    for repo in results:
+        repo_name = repo.get('name')
+        response = requests.get(
+            '{endpoint}/repositories/{username}/{repo_name}/tags/?page_size=10000'.format(endpoint=api_endpoint, username=user,
+                                                                                                         repo_name=repo_name),
+            headers={'Authorization': 'JWT {token}'.format(token=token)})
+        image_tags = response.json().get('results')
+        for tag in image_tags:
+            image_tag = tag.get('name')
+            full_image_tag = '{username}/{repository}:{tag}'.format(username=user, repository=repo_name, tag=image_tag)
+            full_image_list.append(full_image_tag)
+    return full_image_list
 
 @app.route('/')
 @check_user
@@ -56,34 +71,41 @@ def show_entries():
     rv = cursor.fetchall()
     return jsonify(rv)
 
-
-@app.route('/spawn_containers')
-@check_user
-def spawn_containers():
-    docker.ping()
-    if not _assert_login():
-        _docker_login()
-        print(docker.info().get('Username'))
-    print(docker.images.list("{}/{}".format(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'])))
-    return "OK"
-
 @app.route('/pull')
 @check_user
-def pull_image():
-    if not _assert_login():
-        _docker_login()
-    image = docker.images.pull("0xbeef/ctf_challenges", "demo_app")
-    print(image.tags)
-    return "OK"
+def pull_images():
+    if request.headers.get('accept') == 'text/event-stream':
+        comma_separated_images = request.args.get('images')
+        images = comma_separated_images.split(',')
+        def stream(images):
+            for image in images:
+                for line in docker.pull(*image.split(':'), stream = True):
+                    yield "data:" + str(line) + "\n\n"
+        return Response(stream(images), mimetype= 'text/event-stream')
+    else:
+        _docker_login()  # do not perform login every time
+        images = _get_image_tags(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'],
+                                 app.config['DOCKER_API_SERVER'])
+        return render_template('spawn_containers.html', images = images)
 
-@app.route('/search')
+def stream_template(template_name, **context):
+    app.update_template_context(context)
+    t = app.jinja_env.get_template(template_name)
+    rv = t.stream(context)
+    rv.enable_buffering(5)
+    return rv
+
+@app.route('/pull2')
 @check_user
-def search():
-    if not _assert_login():
-        _docker_login()
-    resp = docker.images.list()
-    for r in resp:
-        print(r)
-    return "OK"
+def pull_images_template():
+    _docker_login() # do not perform login every time
+    images = _get_image_tags(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'], app.config['DOCKER_API_SERVER'])
+    for image in images:
+        pull_progress = docker.pull(*image.split(':'), stream = True)
+        return Response(stream_template('stream_template.html', progress = pull_progress))
+
+@app.route('/page')
+def get_page():
+    return send_file('templates/spawn_containers.html')
 
 app.run(host='0.0.0.0', port=8888, debug=True)

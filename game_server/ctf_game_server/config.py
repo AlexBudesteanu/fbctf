@@ -7,4 +7,4 @@ MYSQL_PASSWORD='ctf'
 # Docker config
 DOCKER_USER='0xbeef'
 DOCKER_PASSWORD='alexBlue201993'
-DOCKER_SERVER='https://index.docker.io/v1.27/'
+DOCKER_API_SERVER='https://hub.docker.com/v2'
