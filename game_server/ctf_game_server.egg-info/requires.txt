@@ -1,5 +1,0 @@
-flask
-flask_mysqldb
-docker
-flask_sse
-python-redis

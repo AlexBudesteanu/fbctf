@@ -1,0 +1,19 @@
+- name: install apt packages
+  apt: "name='{{ item }}' state=present"
+  with_items:
+    - libmysqlclient-dev
+
+- name: update the setuptools package to its latest version
+  pip: 
+    name: setuptools
+    state: latest
+
+- name: install the game server and its dependencies
+  shell: python setup.py install
+  args:
+    chdir: "{{ game_server_directory }}"
+
+- name: start the game server
+  shell: python server.py &
+  args:
+    chdir: "{{ game_server_directory }}/{{ name_of_the_package }}"

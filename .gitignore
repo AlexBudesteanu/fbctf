@@ -39,3 +39,7 @@ src/data/attachments/deleted/*
 # Custom logos directory
 src/data/customlogos/*
 !src/data/customlogos/index.php
+
+#game_server
+*.pyc
+*.egg*

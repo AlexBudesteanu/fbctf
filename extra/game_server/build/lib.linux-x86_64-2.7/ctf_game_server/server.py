@@ -8,7 +8,6 @@
 
 from flask import Flask, Response, abort, jsonify, stream_with_context, send_file, request, render_template
 from flask_mysqldb import MySQL
-from flask_sse import sse
 import docker as docker_sdk
 from functools import wraps
 import requests
@@ -17,8 +16,6 @@ import requests
 app = Flask(__name__)
 # Read config
 app.config.from_pyfile('config.py')
-app.config["REDIS_URL"] = "redis://localhost"
-app.register_blueprint(sse, url_prefix='/stream')
 mysql = MySQL(app)
 docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
 
@@ -74,35 +71,22 @@ def show_entries():
     rv = cursor.fetchall()
     return jsonify(rv)
 
-# @app.route('/pull')
-# @check_user
-# def pull_images():
-#     if request.headers.get('accept') == 'text/event-stream':
-#         comma_separated_images = request.args.get('images')
-#         images = comma_separated_images.split(',')
-#         def stream(images):
-#             for image in images:
-#                 # for line in docker.pull(*image.split(':'), stream = True):
-#                 #     print(json.dumps(json.loads(line)))
-#                 #     yield "data: {}".format(json.dumps(json.loads(line)))
-#                 yield image
-#         return Response(stream(images), mimetype= 'text/event-stream')
-#     else:
-#         _docker_login()  # do not perform login every time
-#         images = _get_image_tags(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'],
-#                                  app.config['DOCKER_API_SERVER'])
-#         return render_template('spawn_containers.html', images = images)
-
 @app.route('/pull')
 @check_user
 def pull_images():
+    if request.headers.get('accept') == 'text/event-stream':
+        comma_separated_images = request.args.get('images')
+        images = comma_separated_images.split(',')
+        def stream(images):
+            for image in images:
+                for line in docker.pull(*image.split(':'), stream = True):
+                    yield "data:" + str(line) + "\n\n"
+        return Response(stream(images), mimetype= 'text/event-stream')
+    else:
         _docker_login()  # do not perform login every time
         images = _get_image_tags(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'],
-                             app.config['DOCKER_API_SERVER'])
-        for image in images:
-            for line in docker.pull(*image.split(':'), stream = True):
-                sse.publish("data:{}".format(line))
-        return "All good!"
+                                 app.config['DOCKER_API_SERVER'])
+        return render_template('spawn_containers.html', images = images)
 
 def stream_template(template_name, **context):
     app.update_template_context(context)

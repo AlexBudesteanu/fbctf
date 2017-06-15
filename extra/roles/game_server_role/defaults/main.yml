@@ -1,0 +1,2 @@
+game_server_directory: /vagrant/extra/game_server
+name_of_the_package: ctf_game_server
