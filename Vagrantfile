@@ -10,8 +10,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.ssh.shell = "bash -c 'BASH_ENV=/etc/profile exec bash'"
   config.vm.provision "shell", path: "extra/provision.sh", args: ENV['FBCTF_PROVISION_ARGS'], privileged: false, preserve_order: true
   config.vm.provision "ansible_local", preserve_order: true do |ansible|
-    ansible.playbook = "extra/playbook.yml"
-    ansible.galaxy_role_file = "extra/requirements.yml"
+    ansible.playbook = "extra/ansible_provision/playbook.yml"
+    ansible.galaxy_role_file = "extra/ansible_provision/requirements.yml"
   end
   config.vm.provider "virtualbox" do |v|
     v.memory = 4096
