@@ -1,2 +1,6 @@
 game_server_directory: /vagrant/extra/game_server
 name_of_the_package: ctf_game_server
+ngrok_download_url: https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
+ngrok_config_file: /vagrant/extra/ngrok.yml
+ngrok_api_tunnels_url: http://localhost:4040/api/tunnels
+game_server_dynamic_url_file: /vagrant/extra/game_server_tunnel

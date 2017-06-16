@@ -9,7 +9,7 @@ setup(name="ctf-game-server",
       version="1.0.0",
       packages=["ctf_game_server"],
       install_requires=[
-          'flask',
+          'Flask>=0.10.1',
           'flask_mysqldb',
           'docker'
       ]

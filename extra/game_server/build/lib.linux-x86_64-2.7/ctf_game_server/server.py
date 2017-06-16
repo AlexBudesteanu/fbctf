@@ -10,8 +10,7 @@ import docker as docker_sdk
 from functools import wraps
 import requests
 from Queue import Queue
-import consumer
-import json
+from ctf_game_server import consumer
 
 app = Flask(__name__)
 # Read config
@@ -45,8 +44,8 @@ def _insert_challenge(challenge_data):
 def _get_image_tag(tag_name):
     for line in docker.pull("{}/{}:{}".format(app.config['DOCKER_USER'], app.config['CHALLENGES_REPO'], tag_name),
                             stream=True):
-        print(line)
         yield "data:" + str(line) + "\n\n"
+    queue.task_done()
 
 def _get_image_tags(user, password, api_endpoint):
     response = requests.post("{endpoint}/users/login/". format(endpoint=api_endpoint), data={'username': user, 'password': password})
@@ -105,13 +104,9 @@ def pull_image():
 @app.route('/notify', methods=['POST'])
 @check_user
 def webhook_callback():
-    data = json.loads(request.get_data())
-    push_data = data['push_data']
+    push_data = request.form['push_data']
     tag = push_data['tag']
-    return render_template('pull_images.html', tag=tag)
+    tags_queue.put(tag)
 
-
-# event_loop = consumer.ConsumerThread(tags_queue)
-# event_loop.daemon = True
-# event_loop.start()
+event_loop = consumer.ConsumerThread(tags_queue).start()
 app.run(host='0.0.0.0', port=8888, debug=True)

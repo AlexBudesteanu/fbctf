@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+    <script>
+    var tag = '{{ tag | safe }}'
+    var source = new EventSource(`/pull?tag=${tag}`);
+    var ids = []
+    source.onmessage = function(event) {
+        console.log(event.data);
+        var message = JSON.parse(event.data);
+        var status = message.status;
+        var id = message.id
+        if( $.inArray(id, ids) === -1 ){
+            let $div = $("<div>", {"id": `progress-${id}`, "class": "progress-bar progress-bar-striped active", "role":"progressbaro", "aria-valuenow": 0, "aria-valuemin": 0, "style": {"width": "0%"}});
+            $('#progress-container').append($div);
+        }
+        switch (status) {
+            case "Downloading":
+                var progressDetail = message.progressDetail
+                var total = progressDetail.total;
+                var current = progressDetail.current;
+                var progress = parseInt(current / total * 100)
+                if(message.status.indexOf("Downloading") !== -1){
+                    $(`#progress-${id}`).css('width', progress+'%').attr('aria-valuenow', progress);
+                }
+                break;
+        }
+        
+    }
+    source.onerror = function (event) {
+        source.close()
+    }
+    </script>
+</head>
+<body>
+    <h1>{{ tag }}</h1>
+    <div id="progress-container" class="progress" style="width: 50%; margin: 50px;">
+        
+    </div>
+</div>
+</body>
+</html>
