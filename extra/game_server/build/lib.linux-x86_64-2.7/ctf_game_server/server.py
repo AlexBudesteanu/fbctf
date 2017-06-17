@@ -10,7 +10,6 @@ import docker as docker_sdk
 from functools import wraps
 import requests
 from Queue import Queue
-from ctf_game_server import consumer
 
 app = Flask(__name__)
 # Read config

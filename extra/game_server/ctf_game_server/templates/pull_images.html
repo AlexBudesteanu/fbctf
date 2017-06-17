@@ -5,41 +5,74 @@
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
     <script>
-    var tag = '{{ tag | safe }}'
+
+    var trackProgress = (message, element) => {
+        let progressDetail = message.progressDetail;
+        let total = progressDetail.total;
+        let current = progressDetail.current;
+        let progress = parseInt(current / total * 100);
+        element.css('width', progress+'%').attr('aria-valuenow', progress);
+    }
+    var tag = '{{ tag | safe }}';
     var source = new EventSource(`/pull?tag=${tag}`);
-    var ids = []
+    var ids = [];
     source.onmessage = function(event) {
-        console.log(event.data);
         var message = JSON.parse(event.data);
         var status = message.status;
-        var id = message.id
-        if( $.inArray(id, ids) === -1 ){
-            let $div = $("<div>", {"id": `progress-${id}`, "class": "progress-bar progress-bar-striped active", "role":"progressbaro", "aria-valuenow": 0, "aria-valuemin": 0, "style": {"width": "0%"}});
-            $('#progress-container').append($div);
+        var id = message.id;
+        if( id && ids.indexOf(id) < 0 && id !== tag){
+            // create the header element of the id
+            let $id_header = $("<h3>", {"id": id, "text": `${id} downloading...`}).css({"margin-left": "50px"});
+
+            // create the div element of the progressbar
+            let $div_container = $("<div>", {"id": `${id}-progress-div`, "class": "progress"}).css({"width": "50%", "margin-left": "50px", "margin-top": "5px"});
+            let $div = $("<div>", {"id": `progress-${id}`, "class": "progress-bar progress-bar-striped active", "role":"progressbar", "aria-valuenow": 0, "aria-valuemin": 0}).css({"width": "0%"});
+            $div_container.append($div);
+
+            //append the header id and the progress to the body
+            $('body').append($id_header).append($div_container);
+
+            //push the id to the id list in order not to have duplicate progress for each id
+            ids.push(id);
         }
-        switch (status) {
-            case "Downloading":
-                var progressDetail = message.progressDetail
-                var total = progressDetail.total;
-                var current = progressDetail.current;
-                var progress = parseInt(current / total * 100)
-                if(message.status.indexOf("Downloading") !== -1){
-                    $(`#progress-${id}`).css('width', progress+'%').attr('aria-valuenow', progress);
-                }
+        switch (true) {
+            case (status === "Downloading"):
+                var element = $(`#progress-${id}`);
+                trackProgress(message, element);
+                break;
+            case (status === "Download complete"):
+                $(`#${id}`).text(`${id} extracting...`);
+                $(`#progress-${id}`).css('width', '100%').attr('aria-valuenow', 100);
+                break;
+            case (status === "Extracting"):
+                $(`#${id}`).text(`${id} extracting...`);
+                var element = $(`#progress-${id}`);
+                trackProgress(message, element);
+                break;
+            case (status === "Pull complete"):
+                $(`#${id}`).remove();
+                $(`#${id}-progress-div`).remove();
+                break;
+            case (status.indexOf("Status: Downloaded newer image") >= 0):
+                $("#tag_status").text(`${tag} - Pull Complete`);
+                let $button = $("<a>", {"href": "https://10.10.10.5/index.php?p=admin&page=flags", "text": "Check challenge.", "class": "btn btn-default"}).click(() => {
+                    alert('tatiiic!')
+                }).css({"margin-left": "50px"});
+                $('body').append($button);
+                break;
+            case (status.indexOf("Status: Image is up to date") >= 0):
+                $("#tag_status").text(`${tag} challenge already exists.`);
                 break;
         }
         
-    }
+    };
     source.onerror = function (event) {
         source.close()
     }
     </script>
 </head>
 <body>
-    <h1>{{ tag }}</h1>
-    <div id="progress-container" class="progress" style="width: 50%; margin: 50px;">
-        
-    </div>
+    <h1 id="tag_status" style="margin: 50px">{{ tag }} - Downloading...</h1>
 </div>
 </body>
 </html>

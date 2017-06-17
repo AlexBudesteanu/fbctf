@@ -4,13 +4,12 @@
 
 """
 
-from flask import Flask, Response, abort, jsonify, stream_with_context, send_file, request, render_template
+from flask import Flask, Response, abort, jsonify, stream_with_context, send_file, request, render_template, redirect
 from flask_mysqldb import MySQL
 import docker as docker_sdk
 from functools import wraps
 import requests
 from Queue import Queue
-import consumer
 import json
 
 app = Flask(__name__)
@@ -43,10 +42,11 @@ def _insert_challenge(challenge_data):
     pass
 
 def _get_image_tag(tag_name):
-    for line in docker.pull("{}/{}:{}".format(app.config['DOCKER_USER'], app.config['CHALLENGES_REPO'], tag_name),
-                            stream=True):
+    challenge = "{}/{}:{}".format(app.config['DOCKER_USER'], app.config['CHALLENGES_REPO'], tag_name)
+    for line in docker.pull(challenge, auth_config={"Username":app.config['DOCKER_USER'], "Password":app.config['DOCKER_PASSWORD']}, stream=True):
         print(line)
         yield "data:" + str(line) + "\n\n"
+    print(docker.inspect_image(challenge)["Labels"])
 
 def _get_image_tags(user, password, api_endpoint):
     response = requests.post("{endpoint}/users/login/". format(endpoint=api_endpoint), data={'username': user, 'password': password})
@@ -111,7 +111,4 @@ def webhook_callback():
     return render_template('pull_images.html', tag=tag)
 
 
-# event_loop = consumer.ConsumerThread(tags_queue)
-# event_loop.daemon = True
-# event_loop.start()
 app.run(host='0.0.0.0', port=8888, debug=True)
