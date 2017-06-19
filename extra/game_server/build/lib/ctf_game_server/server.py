@@ -4,23 +4,21 @@
 
 """
 
-from flask import Flask, Response, abort, jsonify, request, render_template
+from flask import Flask, Response, abort, jsonify, stream_with_context, send_file, request, render_template, redirect
+from flask_mysqldb import MySQL
 import docker as docker_sdk
 from functools import wraps
 import requests
+from Queue import Queue
 import json
-from ctf_game_server.database import db_session, init_db
-from ctf_game_server.models import Level
 
 app = Flask(__name__)
 # Read config
 app.config.from_pyfile('config.py')
-
-# bind to the docker socket
+#mysql = MySQL(app)
+db = SQLAlchemy(app)
 docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
-
-# db init
-init_db()
+tags_queue = Queue()
 
 # Decorator Function
 def check_user(func):
@@ -32,10 +30,14 @@ def check_user(func):
             return abort(403)
     return wrap
 
+def connect_db():
+    """Connects to the specific database."""
+    return mysql.connection
+
 @app.teardown_appcontext
 def req_teardown(error):
     """Closes the database again at the end of the request."""
-    db_session.remove()
+    pass
 
 def _insert_challenge(challenge_data):
     # insert into db
@@ -73,6 +75,15 @@ def _get_image_tags(user, password, api_endpoint):
             full_image_tag = '{username}/{repository}:{tag}'.format(username=user, repository=repo_name, tag=image_tag)
             full_image_list.append(full_image_tag)
     return full_image_list
+
+@app.route('/')
+@check_user
+def show_entries():
+    mysql_connection = connect_db()
+    cursor = mysql_connection.cursor()
+    cursor.execute('''SELECT * FROM fbctf.teams''')
+    rv = cursor.fetchall()
+    return jsonify(rv)
 
 @app.route('/pull_all', methods=['GET'])
 @check_user
@@ -113,9 +124,5 @@ def inpect_image():
     data = _inspect_image_tag(tag)
     return data
 
-@app.route('/test_db', methods=['GET'])
-def test_db():
-    r = Level.query.all()
-    return jsonify(r)
 
 app.run(host='0.0.0.0', port=8888, debug=True)

@@ -10,7 +10,8 @@ setup(name="ctf-game-server",
       packages=["ctf_game_server"],
       install_requires=[
           'Flask>=0.10.1',
-          'flask_mysqldb',
+          'Flask-SQLAlchemy',
+          'python-memcached',
           'docker'
       ]
       )
