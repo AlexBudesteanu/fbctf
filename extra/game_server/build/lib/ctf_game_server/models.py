@@ -39,25 +39,3 @@ class Level(Base):
 
     def __repr__(self):
         return json.dumps({c.name: getattr(self, c.name) for c in self.__table__.columns if not c.name == 'created_ts'})
-
-class Session(Base):
-    __tablename__= 'sessions'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    cookie = Column(String)
-    data = Column(String)
-    team_id = Column(Integer)
-    created_ts = Column(TIMESTAMP)
-    last_access_ts = Column(TIMESTAMP)
-    last_page_access = Column(String)
-
-    def __init__(self, id, cookie, data, team_id, created_ts, last_accessed_ts, last_page_access):
-        self.id = id
-        self.cookie = cookie
-        self.data = data
-        self.team_id = team_id
-        self.created_ts = created_ts
-        self.last_access_ts = last_accessed_ts
-        self.last_page_access = last_page_access
-
-    def __repr__(self):
-        return {c.name: str(getattr(self, c.name)) for c in self.__table__.columns}

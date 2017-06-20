@@ -49,7 +49,7 @@
                 var element = $(`#progress-${id}`);
                 trackProgress(message, element);
                 break;
-            case (status === "Pull complete"):
+            case (status === "Pull complete" || status === "Already exists"):
                 $(`#${id}`).remove();
                 $(`#${id}-progress-div`).remove();
                 break;

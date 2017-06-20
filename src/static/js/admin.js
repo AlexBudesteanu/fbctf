@@ -91,6 +91,31 @@ function sendAdminRequest(request_data: any, refresh_page) {
   });
 }
 
+
+// ADDED BY ALEX BUDESTEANU - 20/06/2017
+function spawnContainerRequest(challenge_name){
+  $.post('http://10.10.10.5:8888/test', challenge_name)
+  .fail(function() {
+    // TODO: Make this a modal
+    console.log('ERROR');
+  })
+  .done(function(data) {
+    var responseData = JSON.parse(data);
+    if (responseData.result == 'OK') {
+      console.log('OK');
+      if (refresh_page) {
+        window.location.reload(true);
+      }
+      return true;
+    } else {
+      // TODO: Make this a modal
+      console.log('Failed');
+      return false;
+    }
+  });
+}
+
+
 var $body = $('body');
 
 
@@ -928,7 +953,8 @@ function toggleLevel(radio_id) {
   };
   toggle_data[radio_action] = action_value;
   if (level_id && radio_action) {
-    sendAdminRequest(toggle_data, false);
+    spawnContainerRequest(level_id)
+    //sendAdminRequest(toggle_data, false);
   }
 }
 

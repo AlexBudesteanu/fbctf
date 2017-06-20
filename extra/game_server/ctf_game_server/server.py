@@ -10,13 +10,15 @@ from functools import wraps
 import requests
 import json
 from database import db_session, init_db
-from models import Level
-import memcache
+from models import Level, Session
+import re
+from sqlalchemy import desc
+import time
+
 
 app = Flask(__name__)
 # Read config
 app.config.from_pyfile('config.py')
-cache = memcache.Client(['127.0.0.1:11211'], debug=0)
 
 # bind to the docker socket
 docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
@@ -24,11 +26,12 @@ docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
 # db init
 init_db()
 
-
 # Decorator Function
 def check_user(func):
     @wraps(func)
     def wrap(*args, **kwargs):
+        cookie_list = request.cookies
+        print(cookie_list)
         if True:  # check user here
             return func(*args, **kwargs)
         else:
@@ -43,29 +46,71 @@ def req_teardown(error):
     db_session.remove()
 
 
-def _insert_challenge(challenge_data):
-    # insert into db
-    # challenge = Level(challenge_data.get("title"), challenge_data.get("description"), challenge_data.get("points"),
-    #                    "hardcoded_flag", "no hint", 0, 0, 0)
-    # db_session.add(challenge)
-    # db_session.commit()
-    special_craft = {'action': 'create_flag', 'title': challenge_data.get("title"),
-                     'description': challenge_data.get("description"), 'flag': 'whatever', 'entity_id': 0,
-                     'category_id': 0, 'points': 200, 'hint': 'mhm', 'penalty': 10, 'csrf_token': "S8L00ZwNWopSYNHZzfcAV"}
-    response = requests.post("http://localhost/index.php?p=admin&ajax=true",
-                             data=special_craft, verify=False)
-    print(response.content)
+def _log_in(username, password):
+    pass
+
+
+def _get_cookies(team_id=None):
+    cookies = Session.query.order_by(desc(Session.created_ts)).all()
+    cookie_list = []
+    for cookie in cookies:
+        cookie_raw = cookie.__repr__()
+        cookie_data = cookie_raw['data']
+        list_of_tuples = [re.split("\|s:[0-9]+:", item) for item in
+                          cookie_data.split(';')[:-1]]  # values are wrapped in double quotes
+        cookie_data_dict = dict(list_of_tuples)
+        # replace double quotes from data dict
+        for key, value in cookie_data_dict.items():
+            cookie_data_dict[key] = value.replace('"', '')
+        del cookie_raw['data']
+        cookie_dict = cookie_raw.copy()
+        cookie_dict.update(cookie_data_dict)
+        if team_id:
+            if cookie_dict['team_id'] == str(team_id):
+                cookie_list.append(cookie_dict)
+        else:
+            cookie_list.append(cookie_dict)
+
+    return cookie_list
+
+
+def _insert_challenge(challenge_data, session, csrf_token):
+    print('INSERTING CHALLENGE')
+    cookies = {"FBCTF": session}
+    data = {'action': 'create_flag', 'title': challenge_data.get("title"),
+            'description': challenge_data.get("description"), 'flag': 'whatever', 'entity_id': 0,
+            'category_id': 1, 'points': 200, 'hint': 'mhm', 'penalty': 10,
+            'csrf_token': csrf_token}
+    response = requests.post("https://localhost/index.php?p=admin&ajax=true",
+                             data=data, cookies=cookies, verify=False)
+    assert response.status_code == 200
 
 
 def _pull_image_tag_as_stream(tag_name):
     challenge = "{}/{}:{}".format(app.config['DOCKER_USER'], app.config['CHALLENGES_REPO'], tag_name)
     for line in docker.pull(challenge, auth_config={"Username": app.config['DOCKER_USER'],
                                                     "Password": app.config['DOCKER_PASSWORD']}, stream=True):
-        print(line)
         yield "data:" + str(line) + "\n\n"
     image_data = _inspect_image_tag(challenge)
     challenge_data = image_data["Config"]["Labels"]
-    _insert_challenge(challenge_data)
+    session_cookies = _get_cookies(app.config['DEFAULT_ADMIN_TEAM_ID'])
+    if len(session_cookies) > 0:
+        pass
+    else:
+        # perform login
+        print('PERFORMING LOGIN')
+        data = {'action': 'login_team', 'password': app.config['ADMIN_PASSWORD'], 'teamname': app.config['ADMIN_USER']}
+        response = requests.post("https://localhost/index.php?p=index&ajax=true",
+                                 data=data, verify=False)
+        assert response.status_code == 200
+        # force reconect to the database
+        db_session.remove()
+        init_db()
+        session_cookies = _get_cookies(app.config['DEFAULT_ADMIN_TEAM_ID'])
+    latest_admin_session_cookie = session_cookies[0]
+    session = latest_admin_session_cookie.get('cookie')
+    csrf_token = latest_admin_session_cookie.get('csrf_token')
+    _insert_challenge(challenge_data, session, csrf_token)
 
 
 def _inspect_image_tag(image_tag):
@@ -148,9 +193,21 @@ def test_db():
     return jsonify(r)
 
 
-# @app.route('/test_insert', methods=['GET'])
-# def test():
-#     response = requests.post("http://10.10.10.5/index.php?p=admin&ajax=true",
-#                              data={'username': user, 'password': password})
+@app.route('/test', methods=['GET'])
+@check_user
+def test():
+    # special_craft = {'action': 'create_flag', 'title': "title_test_flask",
+    #                  'description': "description", 'flag': 'whatever', 'entity_id': 0,
+    #                  'category_id': 0, 'points': 200, 'hint': 'mhm', 'penalty': 10,
+    #                  'csrf_token': "2cCvxfKT6Gu6w0oT34r6yk"}
+    #cookie_list = _get_cookies(1)
+    #print(cookie_list)
+    print("CONTAINER SPAWN REQUESTED")
+    data = json.loads(request.get_data())
+    print(data)
+    return "OK"
+    # response = requests.post("http://10.10.10.5/index.php?p=admin&ajax=true",
+    #                          data={'username': user, 'password': password})
+
 
 app.run(host='0.0.0.0', port=8888, debug=True)

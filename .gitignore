@@ -43,3 +43,4 @@ src/data/customlogos/*
 #game_server
 *.pyc
 *.egg*
+.idea/
