@@ -13,18 +13,28 @@ from database import db_session, init_db
 from models import Level, Session
 import re
 from sqlalchemy import desc
-import time
+from multiprocessing.pool import ThreadPool
+import logging
+from logging.handlers import RotatingFileHandler
 
 
-app = Flask(__name__)
+application = Flask(__name__)
 # Read config
-app.config.from_pyfile('config.py')
+application.config.from_pyfile('./config.py')
 
 # bind to the docker socket
 docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
 
 # db init
 init_db()
+
+pool = ThreadPool(processes=1)
+
+file_handler = RotatingFileHandler('/etc/game_server.logs', maxBytes=1024 * 1024 * 100, backupCount=20)
+file_handler.setLevel(logging.ERROR)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+application.logger.addHandler(file_handler)
 
 # Decorator Function
 def check_user(func):
@@ -40,11 +50,15 @@ def check_user(func):
     return wrap
 
 
-@app.teardown_appcontext
+@application.teardown_appcontext
 def req_teardown(error):
     """Closes the database again at the end of the request."""
     db_session.remove()
 
+@application.errorhandler(500)
+def internal_error(exception):
+    application.logger.error(exception)
+    return render_template('internal_server_error.html', message=exception), 500
 
 def _log_in(username, password):
     print('PERFORMING LOGIN')
@@ -94,26 +108,45 @@ def _insert_challenge(challenge_data, session, csrf_token):
 
 
 def _pull_image(tag_name):
-    challenge = "{}/{}:{}".format(app.config['DOCKER_USER'], app.config['CHALLENGES_REPO'], tag_name)
-    for line in docker.pull(challenge, auth_config={"Username": app.config['DOCKER_USER'],
-                                                    "Password": app.config['DOCKER_PASSWORD']}):
-        print(line)
+    try:
+        challenge = "{}/{}:{}".format(application.config['DOCKER_USER'], application.config['CHALLENGES_REPO'], tag_name)
+        response = docker.pull(challenge, auth_config={"Username": application.config['DOCKER_USER'],
+                                                    "Password": application.config['DOCKER_PASSWORD']})
+        if('up to date' in response or 'Downloaded newer' in response):
+            image_data = _inspect_image_tag(challenge)
+            challenge_data = image_data["Config"]["Labels"]
+            session_cookies = _get_cookies(application.config['DEFAULT_ADMIN_TEAM_ID'])
+            if len(session_cookies) > 0:
+                pass
+            else:
+                # perform login
+                _log_in(application.config['ADMIN_USER'], application.config['ADMIN_PASSWORD'])
+                session_cookies = _get_cookies(application.config['DEFAULT_ADMIN_TEAM_ID'])
+            latest_admin_session_cookie = session_cookies[0]
+            session = latest_admin_session_cookie.get('cookie')
+            csrf_token = latest_admin_session_cookie.get('csrf_token')
+            _insert_challenge(challenge_data, session, csrf_token)
+        else:
+            raise Exception('failed to pull image from repository.')
+    except Exception as ex:
+        application.logger.error(str(ex))
 
 
 def _pull_image_tag_as_stream(tag_name):
-    challenge = "{}/{}:{}".format(app.config['DOCKER_USER'], app.config['CHALLENGES_REPO'], tag_name)
-    for line in docker.pull(challenge, auth_config={"Username": app.config['DOCKER_USER'],
-                                                    "Password": app.config['DOCKER_PASSWORD']}, stream=True):
+    challenge = "{}/{}:{}".format(application.config['DOCKER_USER'], application.config['CHALLENGES_REPO'], tag_name)
+    for line in docker.pull(challenge, auth_config={"Username": application.config['DOCKER_USER'],
+                                                    "Password": application.config['DOCKER_PASSWORD']}, stream=True):
+        print(line)
         yield "data:" + str(line) + "\n\n"
     image_data = _inspect_image_tag(challenge)
     challenge_data = image_data["Config"]["Labels"]
-    session_cookies = _get_cookies(app.config['DEFAULT_ADMIN_TEAM_ID'])
+    session_cookies = _get_cookies(application.config['DEFAULT_ADMIN_TEAM_ID'])
     if len(session_cookies) > 0:
         pass
     else:
         # perform login
-        _log_in(app.config['ADMIN_USER'],app.config['ADMIN_PASSWORD'])
-        session_cookies = _get_cookies(app.config['DEFAULT_ADMIN_TEAM_ID'])
+        _log_in(application.config['ADMIN_USER'], application.config['ADMIN_PASSWORD'])
+        session_cookies = _get_cookies(application.config['DEFAULT_ADMIN_TEAM_ID'])
     latest_admin_session_cookie = session_cookies[0]
     session = latest_admin_session_cookie.get('cookie')
     csrf_token = latest_admin_session_cookie.get('csrf_token')
@@ -133,7 +166,7 @@ def _get_image_tags(user, password, api_endpoint):
         '{endpoint}/repositories/{username}/?page_size=10000'.format(endpoint=api_endpoint, username=user),
         headers={'Authorization': 'JWT {token}'.format(token=token)})
     results = response.json().get('results')
-    full_image_list = []
+    full_tag_list = []
     for repo in results:
         repo_name = repo.get('name')
         response = requests.get(
@@ -144,64 +177,41 @@ def _get_image_tags(user, password, api_endpoint):
         image_tags = response.json().get('results')
         for tag in image_tags:
             image_tag = tag.get('name')
-            full_image_tag = '{username}/{repository}:{tag}'.format(username=user, repository=repo_name, tag=image_tag)
-            full_image_list.append(full_image_tag)
-    return full_image_list
+            full_tag_list.append(str(image_tag))
+    return full_tag_list
 
 
-@app.route('/pull_all', methods=['GET'])
+@application.route('/pull_all', methods=['GET'])
 @check_user
 def pull_images():
-    if request.headers.get('accept') == 'text/event-stream':
-        comma_separated_images = request.args.get('images')
-        images = comma_separated_images.split(',')
-
-        def stream(images):
-            for image in images:
-                for line in docker.pull(*image.split(':'), stream=True):
-                    yield "data:" + str(line) + "\n\n"
-
-        return Response(stream(images), mimetype='text/event-stream')
-    else:
-        images = _get_image_tags(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'],
-                                 app.config['DOCKER_API_SERVER'])
-        return render_template('pull_image.html', images=images)
+    tags = _get_image_tags(application.config['DOCKER_USER'], application.config['DOCKER_PASSWORD'],
+                           application.config['DOCKER_LOGIN_SERVER'])
+    return render_template('pull_all_images.html', tags=tags)
 
 
-@app.route('/pull', methods=['GET'])
+@application.route('/pull', methods=['GET'])
 @check_user
 def pull_image():
+    print("------------------------------------------------------------------------")
     tag = request.args.get('tag')
+    print("pulling {}".format(tag))
     if request.headers.get('accept') == 'text/event-stream':
         return Response(_pull_image_tag_as_stream(tag), mimetype='text/event-stream')
     else:
         return render_template('pull_image.html', tag=tag)
 
 
-@app.route('/notify', methods=['POST'])
+@application.route('/notify', methods=['POST'])
 @check_user
 def webhook_callback():
     data = json.loads(request.get_data())
     push_data = data['push_data']
     tag = push_data['tag']
-    _pull_image(tag)
+    pool.apply_async(_pull_image, (tag,))
     return "OK"
 
 
-@app.route('/inspect', methods=['GET'])
-def inpect_image():
-    tag = request.args.get('tag')
-    data = _inspect_image_tag(tag)
-    return data
-
-
-@app.route('/test_db', methods=['GET'])
-def test_db():
-    r = Level.query.all()
-    return jsonify(r)
-
-
-@app.route('/test', methods=['GET'])
+@application.route('/test', methods=['GET'])
 @check_user
 def test():
     # special_craft = {'action': 'create_flag', 'title': "title_test_flask",
@@ -210,12 +220,15 @@ def test():
     #                  'csrf_token': "2cCvxfKT6Gu6w0oT34r6yk"}
     #cookie_list = _get_cookies(1)
     #print(cookie_list)
-    print("CONTAINER SPAWN REQUESTED")
-    data = json.loads(request.get_data())
-    print(data)
-    return "OK"
+    # print("CONTAINER SPAWN REQUESTED")
+    # data = json.loads(request.get_data())
+    # print(data)
+    # return "OK"
     # response = requests.post("http://10.10.10.5/index.php?p=admin&ajax=true",
-    #                          data={'username': user, 'password': password})
+    #                           data={'username': user, 'password': password})\
+    tags = ["tag1", "bof", "binary_easy"]
+    tags_string = ','.join(tags)
+    return render_template('test.html', tags=tags)
 
-
-app.run(host='0.0.0.0', port=8888, debug=True)
+if __name__=="__main__":
+    application.run(host='0.0.0.0')

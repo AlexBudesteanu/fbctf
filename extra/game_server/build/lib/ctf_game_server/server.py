@@ -113,7 +113,7 @@ def pull_images():
     else:
         images = _get_image_tags(app.config['DOCKER_USER'], app.config['DOCKER_PASSWORD'],
                                  app.config['DOCKER_API_SERVER'])
-        return render_template('pull_images.html', images=images)
+        return render_template('pull_image.html', images=images)
 
 
 @app.route('/pull', methods=['GET'])
@@ -123,7 +123,7 @@ def pull_image():
     if request.headers.get('accept') == 'text/event-stream':
         return Response(_pull_image_tag_as_stream(tag), mimetype='text/event-stream')
     else:
-        return render_template('pull_images.html', tag=tag)
+        return render_template('pull_image.html', tag=tag)
 
 
 @app.route('/notify', methods=['POST'])
@@ -132,7 +132,7 @@ def webhook_callback():
     data = json.loads(request.get_data())
     push_data = data['push_data']
     tag = push_data['tag']
-    return render_template('pull_images.html', tag=tag)
+    return render_template('pull_image.html', tag=tag)
 
 
 @app.route('/inspect', methods=['GET'])
@@ -148,7 +148,7 @@ def test_db():
     return jsonify(r)
 
 
-# @app.route('/test_insert', methods=['GET'])
+# @application.route('/test_insert', methods=['GET'])
 # def test():
 #     response = requests.post("http://10.10.10.5/index.php?p=admin&ajax=true",
 #                              data={'username': user, 'password': password})
