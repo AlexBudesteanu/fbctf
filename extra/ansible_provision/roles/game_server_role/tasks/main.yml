@@ -10,9 +10,43 @@
     state: latest
 
 - name: install the game server and its dependencies
-  shell: python setup.py install
+  shell: pip install -e .
   args:
     chdir: "{{ game_server_directory }}"
+
+- name: copy the wsgi folder to the nginx sites-folder
+  copy:
+    src: "{{ config_files_folder }}/game_server/wsgi/"
+    dest: "{{ nginx_deploy_folder }}/ctf_game_server/"
+    directory_mode: True
+
+- name: copy the service config to the specific location
+  copy:
+    src: "{{ config_files_folder }}/game_server.conf"
+    dest: "/etc/init/"
+
+- name: start the service
+  service:
+    name: game_server
+    state: started
+
+- name: copy the nginx configuration for the game_server
+  copy:
+    src: "{{ config_files_folder }}/ctf_game_server.conf"
+    dest: "/etc/nginx/sites-available/"
+
+- name: clear existing symbolic link
+  file:
+    state: absent
+    path: "/etc/nginx/sites-enabled/ctf_game_server.conf"
+
+- name: "create a symbolic link between sites available and sites enabled"
+  shell: "ln -s /etc/nginx/sites-available/ctf_game_server.conf /etc/nginx/sites-enabled"
+
+- name: "restart nginx"
+  service:
+    name: nginx
+    state: reloaded
 
 - name: download ngrok archive to tmp folder
   shell: "wget {{ ngrok_download_url }}"
@@ -24,3 +58,18 @@
     src: "/tmp/{{ ngrok_download_url.split('/')[-1] }}"
     dest: /usr/bin/
     remote_src: True
+
+- name: expose the game server with ngrok
+  shell: "ngrok start -config {{ config_files_folder }}/ngrok.yml --all &"
+
+- name: get the tunnels that ngrok exposes
+  uri:
+    url: "{{ ngrok_api_tunnels_url }}"
+    return_content: yes
+  register: ngrok
+
+- name: save the url of the game server
+  shell: echo "'{{ item.name }} at {{ item.public_url }}'" > "{{ game_server_dynamic_url_file }}"
+  with_items: "{{ ngrok.json.tunnels }}"
+  loop_control:
+    label: "{{ item.name }}: {{ item.public_url }}"

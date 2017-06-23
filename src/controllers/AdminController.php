@@ -2076,11 +2076,6 @@ class AdminController extends Controller {
           </span>
         </header>
         {$adminsections}
-        <div class="admin-buttons">
-          <button class="fb-cta" data-action="add-new">
-            {tr('Add Flag Level')}
-          </button>
-        </div>
       </div>;
   }
 

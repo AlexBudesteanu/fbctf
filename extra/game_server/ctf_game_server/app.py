@@ -103,8 +103,8 @@ def _insert_challenge(challenge_data, session, csrf_token):
     print('INSERTING CHALLENGE')
     cookies = {"FBCTF": session}
     data = {'action': 'create_flag', 'title': challenge_data.get("title"),
-            'description': challenge_data.get("description"), 'flag': 'whatever', 'entity_id': 0,
-            'category_id': 1, 'points': 200, 'hint': 'mhm', 'penalty': 10,
+            'description': challenge_data.get("description"), 'flag': challenge_data.get("flag"), 'entity_id': 0,
+            'category_id': 1, 'points': challenge_data.get('points'), 'hint': challenge_data.get('hint',''), 'penalty': 10,
             'csrf_token': csrf_token}
     response = requests.post("https://localhost/index.php?p=admin&ajax=true",
                              data=data, cookies=cookies, verify=False)
@@ -246,7 +246,7 @@ def run_container():
             container_id = ret.get("Id")
             docker.start(container_id)
             challenge_containers[level_id] = container_id
-            response = jsonify(container_id = 'ef1231', uri='10.10.10.5 {}'.format(host_port))
+            response = jsonify(container_id = container_id, uri='10.10.10.5:{}'.format(host_port))
             response.headers['Access-Control-Allow-Origin'] = "https://10.10.10.5"
             response.headers['Access-Control-Allow-Credentials'] = 'true'
             return response
@@ -284,6 +284,78 @@ def stop_challenge():
         else:
             return 404
 
+@application.route('/start_all', methods=['OPTIONS', 'POST'])
+@check_user
+def start_all():
+    if request.method == "OPTIONS":
+        response = Response("OK")
+        response.headers['Access-Control-Allow-Origin'] = 'https://10.10.10.5'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'access-control-allow-origin, x-csrftoken, content-type, accept'
+        return response
+    elif request.method == "POST":
+        # query for the levels
+        spawned_challenges = []
+        levels = Level.query.all()
+        docker_user = application.config["DOCKER_USER"]
+        docker_repo = application.config["CHALLENGES_REPO"]
+        for level in levels:
+            level = level.__repr__()
+            level_id = level.get('id')
+            level_name = level.get('title')
+            exposed_ports = _inspect_image_tag("{}/{}:{}".format(docker_user, docker_repo, level_name))['Config']['ExposedPorts']
+            host_port = _generate_random_port()
+            port_bindings_dict = {int(port[0].split('/')[0]): ('0.0.0.0', host_port) for port in exposed_ports.items()}
+            host_config = docker.create_host_config(port_bindings = port_bindings_dict)
+            try:
+                ret = docker.create_container("{}/{}:{}".format(docker_user, docker_repo, level_name), host_config=host_config, detach=True)
+                container_id = ret.get("Id")
+                docker.start(container_id)
+                challenge_containers[level_id] = container_id
+                return_dict = {}
+                return_dict['id']=level_id
+                return_dict['uri']='10.10.10.5:{}'.format(host_port)
+                spawned_challenges.append(return_dict)
+            except Exception as ex:
+                print(str(ex))
+                application.logger.error(str(ex))
+        response = jsonify(spawned_challenges)
+        response.headers['Access-Control-Allow-Origin'] = "https://10.10.10.5"
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Content-Type']='application/json'
+        return response
+
+@application.route('/stop_all', methods=['OPTIONS', 'POST'])
+@check_user
+def stop_all():
+    if request.method == "OPTIONS":
+        response = Response("OK")
+        response.headers['Access-Control-Allow-Origin'] = 'https://10.10.10.5'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'access-control-allow-origin, x-csrftoken, content-type, accept'
+        return response
+    elif request.method == "POST":
+        stopped_containers = []
+        for level_id, container_id in challenge_containers.items():
+            try:
+                print('stopping container')
+                docker.stop(container_id,3)
+                docker.prune_containers()
+                return_dict = {}
+                return_dict['level_id'] = level_id
+                return_dict['container_id'] = container_id
+                stopped_containers.append(return_dict)
+            except Exception as ex:
+                print(str(ex))
+                application.logger.error(str(ex))
+        response = jsonify(stopped_containers)
+        response.headers['Access-Control-Allow-Origin'] = "https://10.10.10.5"
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+
 @application.route('/test')
 @check_user
 def test():
@@ -299,9 +371,9 @@ def test():
     # return "OK"
     # response = requests.post("http://10.10.10.5/index.php?p=admin&ajax=true",
     #                           data={'username': user, 'password': password})\
-    tags = ["tag1", "bof", "binary_easy"]
-    tags_string = ','.join(tags)
-    return render_template('test.html', tags=tags)
+    # tags = ["tag1", "bof", "binary_easy"]
+    # tags_string = ','.join(tags)
+    return "OK"
 
 if __name__=="__main__":
     application.run(host='0.0.0.0', debug=True)

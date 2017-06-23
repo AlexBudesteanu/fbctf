@@ -22182,15 +22182,69 @@ function toggleAll(radio_id) {
     status: action_value
   };
   if (action_type) {
-    sendAdminRequest(toggle_data, false);
     if (action_value) {
+      // this means ON - perform ON request
+      spawn_all();
       $('input[type=radio][id*=status--on]').prop('checked', true);
       $('input[type=radio][id*=status--off]').prop('checked', false);
     } else {
+      stop_all();
       $('input[type=radio][id*=status--on]').prop('checked', false);
       $('input[type=radio][id*=status--off]').prop('checked', true);
     }
+    sendAdminRequest(toggle_data, true);
   }
+}
+
+function spawn_all(){
+  $.ajax({
+  type: 'POST',
+  headers: {
+    "Access-Control-Allow-Origin":"*",
+    "Content-Type": "application/json"
+  },
+  url: 'https://10.10.10.5:8888/start_all',
+  crossDomain: true,
+  xhrFields: {
+    withCredentials: true
+  },
+  data: JSON.stringify({'toggle_all': true}),
+  dataType: 'json',
+  async:false
+}).done((data) => {
+  for(challenge in data){
+    createLink(undefined, data[challenge].uri, data[challenge].id);
+  }
+});
+}
+
+function stop_all(){
+  $.ajax({
+  type: 'POST',
+  headers: {
+    "Access-Control-Allow-Origin":"*",
+    "Content-Type": "application/json"
+  },
+  url: 'https://10.10.10.5:8888/stop_all',
+  crossDomain: true,
+  xhrFields: {
+    withCredentials: true
+  },
+  data: JSON.stringify({'toggle_all': false}),
+  dataType: 'json',
+  async:false
+}).done((data) => {
+  links = $('.link_form input[name=link_id]');
+  for(link in links){
+    link_id = links[link].value;
+    let delete_data = {
+    action: 'delete_link',
+    link_id: link_id
+    };
+    sendAdminRequest(delete_data, false);
+  }
+  
+});
 }
 
 function spawnRequest(level_id){
@@ -22212,7 +22266,6 @@ $.ajax({
 }
 
 function stopRequest(level_id){
-  var $self = $(this);
   $.ajax({
   type: 'POST',
   headers: {
@@ -22235,7 +22288,7 @@ function stopRequest(level_id){
     link_id: link_id
   };
   if (link_id) {
-    sendAdminRequest(delete_data, false);
+    sendAdminRequest(delete_data, true);
   }
 });
 }
@@ -22258,7 +22311,7 @@ function toggleLevel(radio_id) {
     }else if (action_value === 0){
       stopRequest(level_id);
     }
-    sendAdminRequest(toggle_data, false);
+    sendAdminRequest(toggle_data, true);
 
   }
 }

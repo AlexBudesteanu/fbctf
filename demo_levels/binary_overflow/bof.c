@@ -1,13 +1,30 @@
-#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
-int main(int argc, char *argv[]) {
-	int a = 1;
-    char buffer[256];
-    printf("buffer address: %p\n", buffer);
-    char* command = "cat flag.txt";
-    printf("Enter input: ");
+int main(void)
+{
+    char buff[15];
+    int pass = 0;
+
+    printf("Enter the password : ");
     fflush(stdout);
-    gets(buffer);
-    system("echo '7h15 b1n4ry 15 unpwn4bl3!!1!'");
+    gets(buff);
+
+    if(strcmp(buff, "geek_stuff"))
+    {
+        printf ("\n Wrong Password \n");
+    }
+    else
+    {
+        printf ("\n Correct Password \n");
+        pass = 1;
+    }
+
+    if(pass)
+    {
+        char* flag = "flag{geek_stuff}";
+        printf("%s\n", flag);
+    }
+
+    return 0;
 }

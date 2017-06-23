@@ -3,4 +3,4 @@ console_ui: false
 tunnels:
  game_server:
   proto: http
-  addr: 8888
+  addr: 9999

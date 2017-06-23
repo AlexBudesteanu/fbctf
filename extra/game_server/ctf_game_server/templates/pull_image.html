@@ -56,7 +56,7 @@
             case (status.indexOf("Status: Downloaded newer image") >= 0):
                 $("#tag_status").text(`${tag} - Pull Complete`);
                 let $button = $("<a>", {"href": "https://10.10.10.5/index.php?p=admin&page=flags", "text": "Check challenge.", "class": "btn btn-default"}).click(() => {
-                    alert('tatiiic!')
+                    window.location.replace('https://10.10.10.5/index.php?p=admin&page=flags');
                 }).css({"margin-left": "50px"});
                 $('body').append($button);
                 break;
