@@ -4,22 +4,22 @@
 
 """
 
-from flask import Flask, Response, abort, jsonify, request, render_template
+from flask import Flask, Response, abort, request, render_template, jsonify
 import docker as docker_sdk
 from functools import wraps
 import requests
 import json
 from database import db_session, init_db
-from models import Level, Session
+from models import Session, Level
 import re
 from sqlalchemy import desc
-from multiprocessing.pool import ThreadPool
 import logging
 from logging.handlers import RotatingFileHandler
 
 
 application = Flask(__name__)
 # Read config
+
 application.config.from_pyfile('config.py')
 
 # bind to the docker socket
@@ -28,13 +28,14 @@ docker = docker_sdk.APIClient(base_url='unix://var/run/docker.sock')
 # db init
 init_db()
 
-pool = ThreadPool(processes=1)
-
 file_handler = RotatingFileHandler('/etc/game_server.logs', maxBytes=1024 * 1024 * 100, backupCount=20)
 file_handler.setLevel(logging.ERROR)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(formatter)
 application.logger.addHandler(file_handler)
+
+#dictionary for storing container ids
+challenge_containers = {}
 
 # Decorator Function
 def check_user(func):
@@ -70,6 +71,9 @@ def _log_in(username, password):
     db_session.remove()
     init_db()
 
+def _generate_random_port():
+    from random import randint
+    return randint(49152, 65535)
 
 def _get_cookies(team_id=None):
     cookies = Session.query.order_by(desc(Session.created_ts)).all()
@@ -157,6 +161,12 @@ def _inspect_image_tag(image_tag):
     ret = docker.inspect_image(image_tag)
     return ret
 
+def _inspect_container(container_id):
+    try:
+        ret = docker.inspect_container(container_id)
+        return ret
+    except Exception as ex:
+        application.logger.error(str(ex))
 
 def _get_image_tags(user, password, api_endpoint):
     response = requests.post("{endpoint}/users/login/".format(endpoint=api_endpoint),
@@ -207,11 +217,74 @@ def webhook_callback():
     data = json.loads(request.get_data())
     push_data = data['push_data']
     tag = push_data['tag']
-    pool.apply_async(_pull_image, (tag,))
+    _pull_image(tag)
     return "OK"
 
+@application.route('/start', methods=['POST', 'OPTIONS'])
+@check_user
+def run_container():
+    if request.method == "OPTIONS":
+        response = Response("OK")
+        response.headers['Access-Control-Allow-Origin'] = 'https://10.10.10.5'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'access-control-allow-origin, x-csrftoken, content-type, accept'
+        return response
+    elif request.method == "POST":
+        data = json.loads(request.get_data())
+        docker_user = application.config["DOCKER_USER"]
+        docker_repo = application.config["CHALLENGES_REPO"]
+        level_id = str(data['level_id'])
+        level = Level.query.filter(Level.id == level_id).first().__repr__()
+        level_name = level.get('title')
+        exposed_ports = _inspect_image_tag("{}/{}:{}".format(docker_user, docker_repo, level_name))['Config']['ExposedPorts']
+        host_port = _generate_random_port()
+        port_bindings_dict = {int(port[0].split('/')[0]): ('0.0.0.0', host_port) for port in exposed_ports.items()}
+        host_config = docker.create_host_config(port_bindings = port_bindings_dict)
+        try:
+            ret = docker.create_container("{}/{}:{}".format(docker_user, docker_repo, level_name), host_config=host_config, detach=True)
+            container_id = ret.get("Id")
+            docker.start(container_id)
+            challenge_containers[level_id] = container_id
+            response = jsonify(container_id = 'ef1231', uri='10.10.10.5 {}'.format(host_port))
+            response.headers['Access-Control-Allow-Origin'] = "https://10.10.10.5"
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            return response
+        except Exception as ex:
+            print(str(ex))
+            application.logger.error(str(ex))
 
-@application.route('/test', methods=['GET'])
+@application.route('/stop', methods=['OPTIONS', 'POST'])
+@check_user
+def stop_challenge():
+    if request.method == "OPTIONS":
+        response = Response("OK")
+        response.headers['Access-Control-Allow-Origin'] = 'https://10.10.10.5'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'access-control-allow-origin, x-csrftoken, content-type, accept'
+        return response
+    elif request.method == "POST":
+        data = json.loads(request.get_data())
+        level_id = str(data['level_id'])
+        print(challenge_containers)
+        container_id = challenge_containers.get(level_id)
+        if(container_id):
+            try:
+                print('stopping container')
+                docker.stop(container_id,3)
+                docker.prune_containers()
+                response = jsonify(container_id=container_id)
+                response.headers['Access-Control-Allow-Origin'] = "https://10.10.10.5"
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+                return response
+            except Exception as ex:
+                print(str(ex))
+                application.logger.error(str(ex))
+        else:
+            return 404
+
+@application.route('/test')
 @check_user
 def test():
     # special_craft = {'action': 'create_flag', 'title': "title_test_flask",
@@ -231,4 +304,4 @@ def test():
     return render_template('test.html', tags=tags)
 
 if __name__=="__main__":
-    application.run(host='0.0.0.0')
+    application.run(host='0.0.0.0', debug=True)

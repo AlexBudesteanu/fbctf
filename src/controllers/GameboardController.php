@@ -23,13 +23,12 @@ class GameboardController extends Controller {
     return array('main', 'viewmode');
   }
 
-  public async function genRenderMainContent(): Awaitable<:xhp> {
+  public function renderMainContent(): :xhp {
     if (SessionUtils::sessionAdmin()) {
       $admin_link = <li><a href="index.php?p=admin">{tr('Admin')}</a></li>;
     } else {
       $admin_link = null;
     }
-    $branding_gen = await $this->genRenderBranding();
     return
       <div id="fb-gameboard" class="fb-gameboard">
         <div class="gameboard-header">
@@ -62,7 +61,7 @@ class GameboardController extends Controller {
             <div class="branding">
               <a href="index.php?p=game">
                 <div class="branding-rules">
-                  {$branding_gen}
+                  <fbbranding />
                 </div>
               </a>
             </div>
@@ -141,20 +140,19 @@ class GameboardController extends Controller {
       </div>;
   }
 
-  public async function genRenderPage(string $page): Awaitable<:xhp> {
+  public function renderPage(string $page): :xhp {
     switch ($page) {
       case 'main':
-        return await $this->genRenderMainContent();
+        return $this->renderMainContent();
         break;
       default:
-        return await $this->genRenderMainContent();
+        return $this->renderMainContent();
         break;
     }
   }
 
   <<__Override>>
   public async function genRenderBody(string $page): Awaitable<:xhp> {
-    $rendered_page = await $this->genRenderPage($page);
     return
       <body data-section="gameboard">
         <input
@@ -164,7 +162,7 @@ class GameboardController extends Controller {
         />
         <div class="fb-sprite" id="fb-svg-sprite"></div>
         <div id="fb-main-content" class="fb-page">
-          {$rendered_page}
+          {$this->renderPage($page)}
         </div>
         <script type="text/javascript" src="static/dist/js/app.js"></script>
       </body>;

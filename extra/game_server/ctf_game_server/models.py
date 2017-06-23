@@ -38,7 +38,7 @@ class Level(Base):
         self.id = id
 
     def __repr__(self):
-        return json.dumps({c.name: getattr(self, c.name) for c in self.__table__.columns if not c.name == 'created_ts'})
+        return {c.name: str(getattr(self, c.name)) for c in self.__table__.columns}
 
 class Session(Base):
     __tablename__= 'sessions'

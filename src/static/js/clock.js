@@ -1,5 +1,3 @@
-// @flow
-
 var $ = require('jquery');
 
 function formatNumber(value) {

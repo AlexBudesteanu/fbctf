@@ -49,25 +49,13 @@ function enableAdminActiveState() {
   }).addClass('active');
 }
 
-var getCookies = function(){
-  var pairs = document.cookie.split(";");
-  var cookies = {};
-  for (var i=0; i<pairs.length; i++){
-    var pair = pairs[i].split("=");
-    cookies[pair[0]] = unescape(pair[1]);
-  }
-  return cookies;
-}
-
 $(document).ready(function() {
   if (window.innerWidth < 960) {
     window.location = '/index.php?page=mobile';
   }
 
   FB_CTF.init();
-  var my_cookies = getCookies();
-  console.log(my_cookies);
-  
+
   var section = $('body').data('section');
   if (section === 'pages') {
     enableNavActiveState();

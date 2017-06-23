@@ -367,7 +367,13 @@ class Control extends Model {
   }
 
   public static async function importLevels(): Awaitable<bool> {
-    Utils::redirect('http://10.10.10.5:8888/pull_all');
+    $data_levels = JSONImporterController::readJSON('levels_file');
+    if (is_array($data_levels)) {
+      $levels = must_have_idx($data_levels, 'levels');
+      await self::genFlushMemcached();
+      return await Level::importAll($levels);
+    }
+    return false;
   }
 
   public static async function importCategories(): Awaitable<bool> {

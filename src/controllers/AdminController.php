@@ -149,25 +149,6 @@ class AdminController extends Controller {
     return $select;
   }
 
-  // TODO: Translate password types
-  private async function genStrongPasswordsSelect(): Awaitable<:xhp> {
-    $types = await Configuration::genAllPasswordTypes();
-    $config = await Configuration::genCurrentPasswordType();
-    $select = <select name="fb--conf--password_type"></select>;
-    foreach ($types as $type) {
-      $select->appendChild(
-        <option 
-          class="fb--conf--password_type" 
-          value={strval($type->getField())}
-          selected={($type->getField() === $config->getField())}>
-          {$type->getDescription()}
-        </option>
-      );
-    }
-
-    return $select;
-  }
-
   private async function genConfigurationDurationSelect(): Awaitable<:xhp> {
     $config = await Configuration::gen('game_duration_unit');
     $duration_unit = $config->getValue();
@@ -312,11 +293,6 @@ class AdminController extends Controller {
       'autorun_cycle' => Configuration::gen('autorun_cycle'),
       'start_ts' => Configuration::gen('start_ts'),
       'end_ts' => Configuration::gen('end_ts'),
-      'livesync' => Configuration::gen('livesync'),
-      'livesync_auth_key' => Configuration::gen('livesync_auth_key'),
-      'custom_logo' => Configuration::gen('custom_logo'),
-      'custom_text' => Configuration::gen('custom_text'),
-      'custom_logo_image' => Configuration::gen('custom_logo_image'),
     };
 
     $results = await \HH\Asio\m($awaitables);
@@ -342,11 +318,6 @@ class AdminController extends Controller {
     $autorun_cycle = $results['autorun_cycle'];
     $start_ts = $results['start_ts'];
     $end_ts = $results['end_ts'];
-    $livesync = $results['livesync'];
-    $livesync_auth_key = $results['livesync_auth_key'];
-    $custom_logo = $results['custom_logo'];
-    $custom_text = $results['custom_text'];
-    $custom_logo_image = $results['custom_logo_image'];
 
     $registration_on = $registration->getValue() === '1';
     $registration_off = $registration->getValue() === '0';
@@ -366,10 +337,6 @@ class AdminController extends Controller {
     $gameboard_off = $gameboard->getValue() === '0';
     $timer_on = $timer->getValue() === '1';
     $timer_off = $timer->getValue() === '0';
-    $livesync_on = $livesync->getValue() === '1';
-    $livesync_off = $livesync->getValue() === '0';
-    $custom_logo_on = $custom_logo->getValue() === '1';
-    $custom_logo_off = $custom_logo->getValue() === '0';
 
     $game_start_array = array();
     if ($start_ts->getValue() !== '0' && $start_ts->getValue() !== 'NaN') {
@@ -443,7 +410,6 @@ class AdminController extends Controller {
       'configuration_duration_select' =>
         $this->genConfigurationDurationSelect(),
       'language_select' => $this->genLanguageSelect(),
-      'password_types_select' => $this->genStrongPasswordsSelect(),
     };
     $results = await \HH\Asio\m($awaitables);
 
@@ -451,44 +417,6 @@ class AdminController extends Controller {
     $configuration_duration_select =
       $results['configuration_duration_select'];
     $language_select = $results['language_select'];
-    $password_types_select = $results['password_types_select'];
-
-    if ($login_strongpasswords->getValue() === '0') { // Strong passwords are not enforced
-      $strong_passwords = <div></div>;
-    } else {
-      $strong_passwords =
-        <div class="form-el el--block-label">
-          <label>{tr('Password Types')}</label>
-          {$password_types_select}
-        </div>;
-    }
-
-    if ($custom_logo->getValue() === '0') { // Custom branding is not enabled
-      $custom_logo_xhp = <div></div>;
-    } else {
-      $custom_logo_xhp =
-        <div class="form-el el--block-label el--full-text">
-          <label for="">{tr('Logo')}</label>
-          <img 
-            id="custom-logo-image" 
-            class="icon--badge" 
-            src={$custom_logo_image->getValue()}
-          />
-          <br/>
-           <h6>
-            <a class="icon-text" href="#" id="custom-logo-link">
-            {tr('Change')}
-            </a>
-          </h6>
-          <input
-            autocomplete="off"
-            name="custom-logo-input"
-            id="custom-logo-input"
-            type="file"
-            accept="image/*"
-          />
-        </div>;
-    }
 
     return
       <div>
@@ -593,32 +521,7 @@ class AdminController extends Controller {
                   </div>
                 </header>
                 <div class="fb-column-container">
-                  <div class="col col-pad col-1-3">
-                    <div class="form-el el--block-label">
-                      <label>{tr('Team Selection')}</label>
-                      <div class="admin-section-toggle radio-inline">
-                        <input
-                          type="radio"
-                          name="fb--conf--login_select"
-                          id="fb--conf--login_select--on"
-                          checked={$login_select_on}
-                        />
-                        <label for="fb--conf--login_select--on">
-                          {tr('On')}
-                        </label>
-                        <input
-                          type="radio"
-                          name="fb--conf--login_select"
-                          id="fb--conf--login_select--off"
-                          checked={$login_select_off}
-                        />
-                        <label for="fb--conf--login_select--off">
-                          {tr('Off')}
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="col col-pad col-1-3">
+                  <div class="col col-pad col-1-2">
                     <div class="form-el el--block-label">
                       <label>{tr('Strong Passwords')}</label>
                       <div class="admin-section-toggle radio-inline">
@@ -643,8 +546,30 @@ class AdminController extends Controller {
                       </div>
                     </div>
                   </div>
-                  <div class="col col-pad col-2-3">
-                    {$strong_passwords}
+                  <div class="col col-pad col-2-2">
+                    <div class="form-el el--block-label">
+                      <label>{tr('Team Selection')}</label>
+                      <div class="admin-section-toggle radio-inline">
+                        <input
+                          type="radio"
+                          name="fb--conf--login_select"
+                          id="fb--conf--login_select--on"
+                          checked={$login_select_on}
+                        />
+                        <label for="fb--conf--login_select--on">
+                          {tr('On')}
+                        </label>
+                        <input
+                          type="radio"
+                          name="fb--conf--login_select"
+                          id="fb--conf--login_select--off"
+                          checked={$login_select_off}
+                        />
+                        <label for="fb--conf--login_select--off">
+                          {tr('Off')}
+                        </label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -964,96 +889,11 @@ class AdminController extends Controller {
               </section>
               <section class="admin-box">
                 <header class="admin-box-header">
-                  <h3>{tr('LiveSync')}</h3>
-                  <div class="admin-section-toggle radio-inline">
-                    <input
-                      type="radio"
-                      name="fb--conf--livesync"
-                      id="fb--conf--livesync--on"
-                      checked={$livesync_on}
-                    />
-                    <label for="fb--conf--livesync--on">
-                      {tr('On')}
-                    </label>
-                    <input
-                      type="radio"
-                      name="fb--conf--livesync"
-                      id="fb--conf--livesync--off"
-                      checked={$livesync_off}
-                    />
-                    <label for="fb--conf--livesync--off">
-                      {tr('Off')}
-                    </label>
-                  </div>
+                  <h3>{tr('Language')}</h3>
                 </header>
-                <div class="fb-column-container">
-                  <div class="col col-pad col-1-4">
-                    <div class="form-el el--block-label el--full-text">
-                      <label>{tr('Optional LiveSync Auth Key')}</label>
-                      <input
-                        type="text"
-                        value={$livesync_auth_key->getValue()}
-                        name="fb--conf--livesync_auth_key"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </section>
-              <section class="admin-box">
-                <header class="admin-box-header">
-                  <h3>{tr('Internationalization')}</h3>
-                </header>
-                <div class="fb-column-container">
-                  <div class="col col-pad col-2-4">
-                    <div class="form-el el--block-label">
-                      <label for="">{tr('Language')}</label>
-                      {$language_select}
-                    </div>
-                  </div>
-                </div>
-              </section>
-              <section class="admin-box">
-                <header class="admin-box-header">
-                  <h3>{tr('Branding')}</h3>
-                </header>
-                <div class="fb-column-container">
-                  <div class="col col-pad col-1-3">
-                    <div class="form-el el--block-label">
-                      <label>{tr('Custom Logo')}</label>
-                      <div class="admin-section-toggle radio-inline">
-                        <input
-                          type="radio"
-                          name="fb--conf--custom_logo"
-                          id="fb--conf--custom_logo--on"
-                          checked={$custom_logo_on}
-                        />
-                        <label for="fb--conf--custom_logo--on">
-                          {tr('On')}
-                        </label>
-                        <input
-                          type="radio"
-                          name="fb--conf--custom_logo"
-                          id="fb--conf--custom_logo--off"
-                          checked={$custom_logo_off}
-                        />
-                        <label for="fb--conf--custom_logo--off">
-                          {tr('Off')}
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="col col-pad col-1-3">
-                    {$custom_logo_xhp}
-                  </div>
-                  <div class="col col-pad col-1-3">
-                    <div class="form-el el--block-label el--full-text">
-                      <label for="">{tr('Custom Text')}</label>
-                      <input
-                        type="text"
-                        name="fb--conf--custom_text"
-                        value={$custom_text->getValue()}
-                      />
-                    </div>
+                <div class="col col-pad col-1-2">
+                  <div class="form-el el--block-label el--full-text">
+                    {$language_select}
                   </div>
                 </div>
               </section>
@@ -1320,17 +1160,10 @@ class AdminController extends Controller {
               <div class="col col-pad col-1-4">
                 <div class="form-el el--block-label el--full-text">
                   <div class="admin-buttons">
-                    <button
-                      class="fb-cta cta--red"
-                      data-action="import-levels">
-                      {tr('Import Levels')}
-                    </button>
-                    <input
-                      class="completely-hidden"
-                      id="import-levels_file"
-                      type="file"
-                      name="levels_file"
-                    />
+                    <a href="https://10.10.10.5:8888/pull_all"
+                      class="fb-cta cta--red">
+                      {tr('Pull Challenges')}
+                    </a>
                   </div>
                 </div>
               </div>
@@ -1339,9 +1172,14 @@ class AdminController extends Controller {
                   <div class="admin-buttons">
                     <button
                       class="fb-cta cta--yellow"
-                      data-action="export-levels">
-                      {tr('Export Levels')}
+                      data-action="pull-tag">
+                      {tr('Pull Challenge')}
                     </button>
+                    <input
+                      id="input_tag"
+                      type="text"
+                      name="attachments_file"
+                    />
                   </div>
                 </div>
               </div>
@@ -3903,7 +3741,6 @@ class AdminController extends Controller {
           {tr('Begin Game')}
         </a>;
     }
-    $branding_xhp = await $this->genRenderBranding();
     return
       <div id="fb-admin-nav" class="admin-nav-bar fb-row-container">
         <header class="admin-nav-header row-fixed">
@@ -3976,7 +3813,7 @@ class AdminController extends Controller {
           <a href="/index.php?p=game">{tr('Gameboard')}</a>
           <a href="" class="js-prompt-logout">{tr('Logout')}</a>
           <a></a>
-          {$branding_xhp}
+          <fbbranding />
         </div>
       </div>;
   }

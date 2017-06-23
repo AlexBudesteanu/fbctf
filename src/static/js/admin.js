@@ -1,5 +1,3 @@
-// @flow
-
 var Slider = require('./slider');
 var Modal = require('./modal');
 var Dropkick = require('dropkickjs');
@@ -90,31 +88,6 @@ function sendAdminRequest(request_data: any, refresh_page) {
     }
   });
 }
-
-
-// ADDED BY ALEX BUDESTEANU - 20/06/2017
-function spawnContainerRequest(challenge_name){
-  $.post('http://10.10.10.5:8888/test', challenge_name)
-  .fail(function() {
-    // TODO: Make this a modal
-    console.log('ERROR');
-  })
-  .done(function(data) {
-    var responseData = JSON.parse(data);
-    if (responseData.result == 'OK') {
-      console.log('OK');
-      if (refresh_page) {
-        window.location.reload(true);
-      }
-      return true;
-    } else {
-      // TODO: Make this a modal
-      console.log('Failed');
-      return false;
-    }
-  });
-}
-
 
 var $body = $('body');
 
@@ -953,8 +926,7 @@ function toggleLevel(radio_id) {
   };
   toggle_data[radio_action] = action_value;
   if (level_id && radio_action) {
-    spawnContainerRequest(level_id)
-    //sendAdminRequest(toggle_data, false);
+    sendAdminRequest(toggle_data, false);
   }
 }
 
@@ -966,10 +938,7 @@ function toggleConfiguration(radio_id) {
     field: radio_action,
     value: action_value
   };
-  var refresh_fields = ['login_strongpasswords', 'custom_logo'];
-  if (refresh_fields.indexOf(radio_action) !== -1) {
-    sendAdminRequest(toggle_data, true);
-  } else {
+  if (radio_action) {
     sendAdminRequest(toggle_data, false);
   }
 }
@@ -980,10 +949,9 @@ function changeConfiguration(field, value) {
     field: field,
     value: value
   };
-  var refresh_fields = ['registration_type', 'language'];
-  if (refresh_fields.indexOf(field) !== -1) {
+  if (field === 'registration_type' || field === 'language') {
     sendAdminRequest(conf_data, true);
-  } else {
+  }else {
     sendAdminRequest(conf_data, false);
   }
 }
@@ -1460,43 +1428,6 @@ module.exports = {
       Modal.loadPopup('p=action&modal=restore-database', 'action-restore-database', function() {
         $('#restore_database').click(databaseRestore);
       });
-    });
-
-    // custom logo file selector
-    var $customLogoInput = $('#custom-logo-input');
-    var $customLogoImage = $('#custom-logo-image');
-    $('#custom-logo-link').on('click', function() {
-      $customLogoInput.trigger('click');
-    });
-    // on file input change, set image
-    $customLogoInput.change(function() {
-      var input = this;
-      if (input.files && input.files[0]) {
-        if (input.files[0].size > (1000*1024)) {
-          alert('Please upload an image less than 1000KB!');
-          return;
-        }
-
-        var reader = new FileReader();
-
-        reader.onload = function (e) {
-          $customLogoImage.attr('src', e.target.result);
-          var rawImageData = e.target.result;
-          var filetypeBeginIdx = rawImageData.indexOf('/') + 1;
-          var filetypeEndIdx = rawImageData.indexOf(';');
-          var filetype = rawImageData.substring(filetypeBeginIdx, filetypeEndIdx);
-          var base64 = rawImageData.substring(rawImageData.indexOf(',') + 1);
-          var logo_data = {
-            action: 'change_custom_logo',
-            logoType: filetype,
-            logo_b64: base64
-          };
-          sendAdminRequest(logo_data, true);
-        };
-
-        reader.readAsDataURL(input.files[0]);
-
-      }
     });
   }
 };

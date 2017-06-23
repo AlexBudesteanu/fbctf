@@ -29,10 +29,6 @@ class AdminAjaxController extends AjaxController {
           'filter' => FILTER_VALIDATE_REGEXP,
           'options' => array('regexp' => '/^[\w-]+$/'),
         ),
-        'logo_b64' => array(
-          'filter' => FILTER_VALIDATE_REGEXP,
-          'options' => array('regexp' => '/^[\w+-\/]+={0,2}$/'),
-        ),
         'entity_id' => FILTER_VALIDATE_INT,
         'attachment_id' => FILTER_VALIDATE_INT,
         'filename' => array(
@@ -121,7 +117,6 @@ class AdminAjaxController extends AjaxController {
       'delete_link',
       'begin_game',
       'change_configuration',
-      'change_custom_logo',
       'create_announcement',
       'delete_announcement',
       'create_tokens',
@@ -412,14 +407,6 @@ class AdminAjaxController extends AjaxController {
         } else {
           return Utils::error_response('Invalid configuration', 'admin');
         }
-      case 'change_custom_logo':
-        $logo = must_have_string($params, 'logo_b64');
-        $custom_logo = await Logo::genCreateCustom($logo, true);
-        if ($custom_logo) {
-          return Utils::ok_response('Success', 'admin');
-        } else {
-          return Utils::error_response('Error changing logo', 'admin');
-        }
       case 'create_announcement':
         await Announcement::genCreate(
           must_have_string($params, 'announcement'),
@@ -494,11 +481,11 @@ class AdminAjaxController extends AjaxController {
         }
         return Utils::error_response('Error importing', 'admin');
       case 'import_levels':
-        $result = await Control::importLevels();
-        if ($result) {
-          return Utils::ok_response('Success', 'admin');
-        }
-        return Utils::error_response('Error importing', 'admin');
+        // $result = await Control::importLevels();
+        // if ($result) {
+          return Utils::ok_response('Success', 'https://10.10.10.5:8888/test');
+        // }
+        // return Utils::error_response('Error importing', 'admin');
       case 'import_categories':
         $result = await Control::importCategories();
         if ($result) {

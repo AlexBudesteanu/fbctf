@@ -13,7 +13,7 @@
         let progress = parseInt(current / total * 100);
         element.css('width', progress+'%').attr('aria-valuenow', progress);
     }
-    var tag = '{{ tags | safe }}';
+    var tag = '{{ tag | safe }}';
     var source = new EventSource(`/pull?tag=${tag}`);
     var ids = [];
     source.onmessage = function(event) {

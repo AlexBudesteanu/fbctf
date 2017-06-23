@@ -14,11 +14,6 @@
   args:
     chdir: "{{ game_server_directory }}"
 
-- name: start the game server
-  shell: python server.py &
-  args:
-    chdir: "{{ game_server_directory }}/{{ name_of_the_package }}"
-
 - name: download ngrok archive to tmp folder
   shell: "wget {{ ngrok_download_url }}"
   args:
@@ -29,18 +24,3 @@
     src: "/tmp/{{ ngrok_download_url.split('/')[-1] }}"
     dest: /usr/bin/
     remote_src: True
-
-- name: expose the game server with ngrok
-  shell: "ngrok start -config {{ ngrok_config_file }} --all &"
-
-- name: get the tunnels that ngrok exposes
-  uri:
-    url: "{{ ngrok_api_tunnels_url }}"
-    return_content: yes
-  register: ngrok
-
-- name: save the url of the game server
-  shell: echo "'{{ item.name }} at {{ item.public_url }}'" > "{{ game_server_dynamic_url_file }}"
-  with_items: "{{ ngrok.json.tunnels }}"
-  loop_control:
-    label: "{{ item.name }}: {{ item.public_url }}"

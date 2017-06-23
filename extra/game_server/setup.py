@@ -11,6 +11,7 @@ setup(name="ctf-game-server",
       install_requires=[
           'Flask>=0.10.1',
           'Flask-SQLAlchemy',
-          'docker'
+          'docker',
+          'uwsgi'
       ]
 )
