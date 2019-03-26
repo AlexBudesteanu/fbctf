@@ -7,12 +7,14 @@ Complete your CLA here: <https://code.facebook.com/cla>
 
 ## Submitting a PR
 
+**All Pull Requests should be made against `dev` (even _bug fixes_).**
+
 Before submitting a large PR for a new feature or improvement, please create an issue first. This will allow us to discuss the feature before much development effort is put into it. After we've agreed that the feature would fit in the scope of the project, or if the change is small enough to not require an issue, follow these steps to create a PR:
 
 - Make a new branch
 
 ```
-git checkout -b my-fix master
+git checkout -b my-fix dev
 ```
 
 - Make your changes, including test cases if applicable. Make sure to follow the coding guidelines described below.
@@ -53,6 +55,8 @@ git push origin my-fix
 - Use flow types wherever possible
 
 ## Code of Conduct
+
+Facebook has adopted a Code of Conduct that we expect project participants to adhere to. Please [read the full text](https://code.facebook.com/pages/876921332402685/open-source-code-of-conduct) so that you can understand what actions will and will not be tolerated.
 
 As contributors and maintainers of this project, we pledge to respect all people who contribute through reporting issues, posting feature requests, updating documentation, submitting pull requests or patches, and other activities.
 

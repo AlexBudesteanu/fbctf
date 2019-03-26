@@ -9,6 +9,7 @@ class Level extends Model implements Importable, Exportable {
       'LEVEL_BY_COUNTRY' => 'level_by_country',
       'ALL_LEVELS' => 'all_levels',
       'ALL_ACTIVE_LEVELS' => 'active_levels',
+      'ALL_LEVELS_COUNTRY_MAP' => 'all_levels_country_map',
     };
 
   private function __construct(
@@ -42,11 +43,11 @@ class Level extends Model implements Importable, Exportable {
   }
 
   public function getTitle(): string {
-    return $this->title;
+    return mb_convert_encoding($this->title, 'UTF-8');
   }
 
   public function getDescription(): string {
-    return $this->description;
+    return mb_convert_encoding($this->description, 'UTF-8');
   }
 
   public function getEntityId(): int {
@@ -153,11 +154,15 @@ class Level extends Model implements Importable, Exportable {
       $entity_iso_code = must_have_string($level, 'entity_iso_code');
       $c = must_have_string($level, 'category');
       $exist = await self::genAlreadyExist($type, $title, $entity_iso_code);
-      $entity_exist = await Country::genCheckExists($entity_iso_code);
-      $category_exist = await Category::genCheckExists($c);
+      list($entity_exist, $category_exist) = await \HH\Asio\va(
+        Country::genCheckExists($entity_iso_code),
+        Category::genCheckExists($c),
+      ); // TODO: Combine Awaits
       if (!$exist && $entity_exist && $category_exist) {
-        $entity = await Country::genCountry($entity_iso_code);
-        $category = await Category::genSingleCategoryByName($c);
+        list($entity, $category) = await \HH\Asio\va(
+          Country::genCountry($entity_iso_code),
+          Category::genSingleCategoryByName($c),
+        ); // TODO: Combine Awaits
         $level_id = await self::genCreate(
           $type,
           $title,
@@ -172,22 +177,26 @@ class Level extends Model implements Importable, Exportable {
           must_have_string($level, 'hint'),
           must_have_int($level, 'penalty'),
         );
-        $links = must_have_idx($level, 'links');
-        invariant(is_array($links), 'links must be of type array');
-        foreach ($links as $link) {
-          await Link::genCreate($link, $level_id);
+        if (array_key_exists('links', $level)) {
+          $links = must_have_idx($level, 'links');
+          invariant(is_array($links), 'links must be of type array');
+          foreach ($links as $link) {
+            await Link::genCreate($link, $level_id); // TODO: Combine Awaits
+          }
         }
-        $attachments = must_have_idx($level, 'attachments');
-        invariant(
-          is_array($attachments),
-          'attachments must be of type array',
-        );
-        foreach ($attachments as $attachment) {
-          await Attachment::genImportAttachments(
-            $level_id,
-            $attachment['filename'],
-            $attachment['type'],
+        if (array_key_exists('attachments', $level)) {
+          $attachments = must_have_idx($level, 'attachments');
+          invariant(
+            is_array($attachments),
+            'attachments must be of type array',
           );
+          foreach ($attachments as $attachment) {
+            await Attachment::genImportAttachments(
+              $level_id,
+              $attachment['filename'],
+              $attachment['type'],
+            ); // TODO: Combine Awaits
+          }
         }
       }
     }
@@ -201,14 +210,17 @@ class Level extends Model implements Importable, Exportable {
     $all_levels = await self::genAllLevels();
 
     foreach ($all_levels as $level) {
-      $entity = await Country::gen($level->getEntityId());
-      $category = await Category::genSingleCategory($level->getCategoryId());
-      $links = await Link::genAllLinks($level->getId());
+      list($entity, $category, $links, $attachments) = await \HH\Asio\va(
+        Country::gen($level->getEntityId()),
+        Category::genSingleCategory($level->getCategoryId()),
+        Link::genAllLinks($level->getId()),
+        Attachment::genAllAttachments($level->getId()),
+      ); // TODO: Combine Awaits
+
       $link_array = array();
       foreach ($links as $link) {
         $link_array[] = $link->getLink();
       }
-      $attachments = await Attachment::genAllAttachments($level->getId());
       $attachment_array = array();
       foreach ($attachments as $attachment) {
         $attachment_array[] = [
@@ -377,8 +389,20 @@ class Level extends Model implements Importable, Exportable {
         $category_id,
       );
 
-    self::invalidateMCRecords(); // Invalidate Memcached Level data.
+    self::invalidateMCRecords();
     invariant($result->numRows() === 1, 'Expected exactly one result');
+
+    $country_id = await self::genCountryIdForLevel(
+      intval(must_have_idx($result->mapRows()[0], 'id')),
+    );
+    $country = await Country::gen($country_id);
+    await \HH\Asio\va(
+      Announcement::genCreateAuto($country->getName()." added!"),
+      ActivityLog::genAdminLog("added", "Country", $country_id),
+    );
+
+    ActivityLog::invalidateMCRecords('ALL_ACTIVITY');
+
     return intval(must_have_idx($result->mapRows()[0], 'id'));
   }
 
@@ -592,29 +616,38 @@ class Level extends Model implements Importable, Exportable {
       $ent_id = $entity_id;
     }
 
-    await $db->queryf(
-      'UPDATE levels SET title = %s, description = %s, entity_id = %d, category_id = %d, points = %d, '.
-      'bonus = %d, bonus_dec = %d, bonus_fix = %d, flag = %s, hint = %s, '.
-      'penalty = %d WHERE id = %d LIMIT 1',
-      $title,
-      $description,
-      $ent_id,
-      $category_id,
-      $points,
-      $bonus,
-      $bonus_dec,
-      $bonus_fix,
-      $flag,
-      $hint,
-      $penalty,
-      $level_id,
-    );
+    $result =
+      await $db->queryf(
+        'UPDATE levels SET title = %s, description = %s, entity_id = %d, category_id = %d, points = %d, '.
+        'bonus = %d, bonus_dec = %d, bonus_fix = %d, flag = %s, hint = %s, '.
+        'penalty = %d WHERE id = %d LIMIT 1',
+        $title,
+        $description,
+        $ent_id,
+        $category_id,
+        $points,
+        $bonus,
+        $bonus_dec,
+        $bonus_fix,
+        $flag,
+        $hint,
+        $penalty,
+        $level_id,
+      );
 
     // Make sure entities are consistent
     await Country::genUsedAdjust();
 
-    self::invalidateMCRecords(); // Invalidate Memcached Level data.
-    Control::invalidateMCRecords('ALL_ACTIVITY'); // Invalidate Memcached Control data.
+    if ($result->numRowsAffected() > 0) {
+      $country_id = await self::genCountryIdForLevel($level_id);
+      $country = await Country::gen($country_id);
+      await \HH\Asio\va(
+        ActivityLog::genAdminLog("updated", "Country", $country_id),
+        Announcement::genCreateAuto($country->getName()." updated!"),
+      );
+      self::invalidateMCRecords(); // Invalidate Memcached Level data.
+      ActivityLog::invalidateMCRecords('ALL_ACTIVITY'); // Invalidate Memcached ActivityLog data.
+    }
   }
 
   // Delete level.
@@ -625,9 +658,51 @@ class Level extends Model implements Importable, Exportable {
     $level = await self::gen($level_id);
     await Country::genSetUsed($level->getEntityId(), false);
 
-    await $db->queryf('DELETE FROM levels WHERE id = %d LIMIT 1', $level_id);
+    // Remove team points for level
+    $scores = await ScoreLog::genAllScoresByLevel($level_id);
+    $level_delete_queries = Vector {};
+    foreach ($scores as $score) {
+      $team_id = $score->getTeamId();
+      $points = $score->getPoints();
+      $level_delete_queries->add(
+        sprintf(
+          'UPDATE teams SET points = points - %d WHERE id = %d',
+          $points,
+          $team_id,
+        ),
+      );
+    }
 
-    self::invalidateMCRecords(); // Invalidate Memcached Level data.
+    // Remove hint penalties from teams points for level
+    $hints = await HintLog::genAllHintsByLevel($level_id);
+    foreach ($hints as $hint) {
+      $team_id = $hint->getTeamId();
+      $penalty = $hint->getPenalty();
+      $level_delete_queries->add(
+        sprintf(
+          'UPDATE teams SET points = points + %d WHERE id = %d',
+          $penalty,
+          $team_id,
+        ),
+      );
+    }
+
+    // Delete all references to level
+    $level_delete_queries->addAll(
+      Set {
+        sprintf('DELETE FROM levels WHERE id = %d LIMIT 1', $level_id),
+        sprintf('DELETE FROM hints_log WHERE level_id = %d', $level_id),
+        sprintf('DELETE FROM scores_log WHERE level_id = %d', $level_id),
+        sprintf('DELETE FROM failures_log WHERE level_id = %d', $level_id),
+      },
+    );
+    await $db->multiQuery($level_delete_queries);
+
+    self::invalidateMCRecords();
+    Control::invalidateMCRecords();
+    MultiTeam::invalidateMCRecords();
+    HintLog::invalidateMCRecords();
+    ScoreLog::invalidateMCRecords();
   }
 
   // Enable or disable level by passing 1 or 0.
@@ -637,13 +712,23 @@ class Level extends Model implements Importable, Exportable {
   ): Awaitable<void> {
     $db = await self::genDb();
 
-    await $db->queryf(
+    $result = await $db->queryf(
       'UPDATE levels SET active = %d WHERE id = %d LIMIT 1',
       (int) $active,
       $level_id,
     );
 
-    self::invalidateMCRecords(); // Invalidate Memcached Level data.
+    if ($result->numRowsAffected() > 0) {
+      $action = ($active === true) ? "enabled" : "disabled";
+      $country_id = await self::genCountryIdForLevel($level_id);
+      $country = await Country::gen($country_id);
+      await \HH\Asio\va(
+        ActivityLog::genAdminLog($action, "Country", $country_id),
+        Announcement::genCreateAuto($country->getName().' '.$action.'!'),
+      );
+      self::invalidateMCRecords();
+      ActivityLog::invalidateMCRecords('ALL_ACTIVITY');
+    }
   }
 
   // Enable or disable levels by type.
@@ -653,13 +738,15 @@ class Level extends Model implements Importable, Exportable {
   ): Awaitable<void> {
     $db = await self::genDb();
 
-    await $db->queryf(
+    $results = await $db->queryf(
       'UPDATE levels SET active = %d WHERE type = %s',
       (int) $active,
       $type,
     );
 
-    self::invalidateMCRecords(); // Invalidate Memcached Level data.
+    if ($results->numRowsAffected() > 0) {
+      self::invalidateMCRecords();
+    }
   }
 
   // Enable or disable all levels.
@@ -670,19 +757,20 @@ class Level extends Model implements Importable, Exportable {
     $db = await self::genDb();
 
     if ($type === 'all') {
-      await $db->queryf(
-        'UPDATE levels SET active = %d WHERE id > 0',
-        (int) $active,
+      $result = await $db->queryf(
+        'SELECT id FROM levels WHERE active = %d AND id >0',
+        (int) !$active,
       );
     } else {
-      await $db->queryf(
-        'UPDATE levels SET active = %d WHERE type = %s',
-        (int) $active,
+      $result = await $db->queryf(
+        'SELECT id FROM levels WHERE active = %d AND type = %s',
+        (int) !$active,
         $type,
       );
     }
-
-    self::invalidateMCRecords(); // Invalidate Memcached Level data.
+    foreach ($result->mapRows() as $row) {
+      await self::genSetStatus(intval($row->get('id')), $active); // TODO: Combine Awaits
+    }
   }
 
   // All levels.
@@ -711,6 +799,31 @@ class Level extends Model implements Importable, Exportable {
       );
       $levels = $mc_result->toValuesArray();
       return $levels;
+    }
+  }
+
+  public static async function genAllLevelsCountryMap(
+    bool $refresh = false,
+  ): Awaitable<Map<int, Level>> {
+    $mc_result = self::getMCRecords('ALL_LEVELS_COUNTRY_MAP');
+    if (!$mc_result || count($mc_result) === 0 || $refresh) {
+      $db = await self::genDb();
+      $all_levels = Map {};
+      $result = await $db->queryf('SELECT * FROM levels ORDER BY id');
+      foreach ($result->mapRows() as $row) {
+        $all_levels->add(
+          Pair {intval($row->get('entity_id')), self::levelFromRow($row)},
+        );
+      }
+      self::setMCRecords('ALL_LEVELS_COUNTRY_MAP', new Map($all_levels));
+      return $all_levels;
+    } else {
+      $levels = array();
+      invariant(
+        $mc_result instanceof Map,
+        'cache return should be of type Map',
+      );
+      return $mc_result;
     }
   }
 
@@ -939,7 +1052,7 @@ class Level extends Model implements Importable, Exportable {
     $lock = fopen($lock_name, 'w');
 
     if ($lock === false) {
-      error_log('Failed to open lock file $lock_name');
+      error_log('Failed to open lock file '.$lock_name);
       return null;
     }
     if (!flock($lock, LOCK_EX)) {
@@ -970,7 +1083,7 @@ class Level extends Model implements Importable, Exportable {
 
           // Check if team has already scored this level
           $previous_score =
-            await ScoreLog::genPreviousScore($level_id, $team_id, false);
+            await ScoreLog::genAllPreviousScore($level_id, $team_id, false);
           if ($previous_score) {
             return false;
           }
@@ -980,23 +1093,25 @@ class Level extends Model implements Importable, Exportable {
           // Calculate points to give
           $points = $level->getPoints() + $level->getBonus();
 
-          // Adjust bonus
-          await self::genAdjustBonus($level_id);
-
-          // Score!
-          await $db->queryf(
-            'UPDATE teams SET points = points + %d, last_score = NOW() WHERE id = %d LIMIT 1',
-            $points,
-            $team_id,
-          );
-
           // Log the score
-          await ScoreLog::genLogValidScore(
+          $captured = await ScoreLog::genLogValidScore(
             $level_id,
             $team_id,
             $points,
             $level->getType(),
           );
+
+          if ($captured === true) {
+            // Adjust bonus
+            await self::genAdjustBonus($level_id);
+
+            // Score!
+            await $db->queryf(
+              'UPDATE teams SET points = points + %d, last_score = NOW() WHERE id = %d LIMIT 1',
+              $points,
+              $team_id,
+            );
+          }
 
           self::invalidateMCRecords(); // Invalidate Memcached Level data.
 
@@ -1023,7 +1138,7 @@ class Level extends Model implements Importable, Exportable {
 
           // Calculate points to give
           $score =
-            await ScoreLog::genPreviousScore($level_id, $team_id, false);
+            await ScoreLog::genAllPreviousScore($level_id, $team_id, false);
           if ($score) {
             $points = $level->getPoints();
           } else {
@@ -1045,7 +1160,7 @@ class Level extends Model implements Importable, Exportable {
             $level->getType(),
           );
 
-          self::invalidateMCRecords(); // Invalidate Memcached Level data.
+          self::invalidateMCRecords();
 
           return true;
         },
@@ -1071,9 +1186,10 @@ class Level extends Model implements Importable, Exportable {
 
           // Check if team has already gotten this hint or if the team has scored this already
           // If so, hint is free
-          $hint = await HintLog::genPreviousHint($level_id, $team_id, false);
-          $score =
-            await ScoreLog::genPreviousScore($level_id, $team_id, false);
+          list($hint, $score) = await \HH\Asio\va(
+            HintLog::genPreviousHint($level_id, $team_id, false),
+            ScoreLog::genAllPreviousScore($level_id, $team_id, false),
+          );
           if ($hint || $score) {
             $penalty = 0;
           }
@@ -1084,22 +1200,25 @@ class Level extends Model implements Importable, Exportable {
             return null;
           }
 
-          // Adjust points
-          await $db->queryf(
-            'UPDATE teams SET points = points - %d WHERE id = %d LIMIT 1',
-            $penalty,
-            $team_id,
+          // Adjust points and log the hint
+          await \HH\Asio\va(
+            $db->queryf(
+              'UPDATE teams SET points = points - %d WHERE id = %d LIMIT 1',
+              $penalty,
+              $team_id,
+            ),
+            HintLog::genLogGetHint($level_id, $team_id, $penalty),
           );
 
-          // Log the hint
-          await HintLog::genLogGetHint($level_id, $team_id, $penalty);
-
-          Control::invalidateMCRecords('ALL_ACTIVITY'); // Invalidate Memcached Control data.
+          ActivityLog::invalidateMCRecords('ALL_ACTIVITY'); // Invalidate Memcached ActivityLog data.
           MultiTeam::invalidateMCRecords('ALL_TEAMS'); // Invalidate Memcached MultiTeam data.
           MultiTeam::invalidateMCRecords('POINTS_BY_TYPE'); // Invalidate Memcached MultiTeam data.
           MultiTeam::invalidateMCRecords('LEADERBOARD'); // Invalidate Memcached MultiTeam data.
+          $completed_level = await MultiTeam::genCompletedLevel($level_id);
+          if (count($completed_level) === 0) {
+            MultiTeam::invalidateMCRecords('TEAMS_FIRST_CAP'); // Invalidate Memcached MultiTeam data.
+          }
           MultiTeam::invalidateMCRecords('TEAMS_BY_LEVEL'); // Invalidate Memcached MultiTeam data.
-          MultiTeam::invalidateMCRecords('TEAMS_FIRST_CAP'); // Invalidate Memcached MultiTeam data.
 
           // Hint!
           return $level->getHint();
@@ -1208,6 +1327,33 @@ class Level extends Model implements Importable, Exportable {
     }
   }
 
+  // Check if a level already exists by type, title and entity.
+  public static async function genAlreadyExistById(
+    int $level_id,
+  ): Awaitable<bool> {
+    $db = await self::genDb();
+
+    $result = await $db->queryf(
+      'SELECT COUNT(*) FROM levels WHERE id = %d',
+      $level_id,
+    );
+
+    if ($result->numRows() > 0) {
+      invariant($result->numRows() === 1, 'Expected exactly one result');
+      return (intval(idx($result->mapRows()[0], 'COUNT(*)')) > 0);
+    } else {
+      return false;
+    }
+  }
+
+  // Check if a level already exists by type, title and entity.
+  public static async function genCountryIdForLevel(
+    int $level_id,
+  ): Awaitable<int> {
+    $level = await self::gen($level_id);
+    return $level->getEntityId();
+  }
+
   public static async function getLevelIdByTypeTitleCountry(
     string $type,
     string $title,
@@ -1234,7 +1380,6 @@ class Level extends Model implements Importable, Exportable {
     int $points,
   ): Awaitable<bool> {
     $db = await self::genDb();
-
     $result =
       await $db->queryf(
         'SELECT COUNT(*) FROM levels WHERE type = %s AND title = %s AND description = %s AND points = %d',
@@ -1243,7 +1388,6 @@ class Level extends Model implements Importable, Exportable {
         $description,
         $points,
       );
-
     if ($result->numRows() > 0) {
       invariant($result->numRows() === 1, 'Expected exactly one result');
       return (intval(idx($result->mapRows()[0], 'COUNT(*)')) > 0);

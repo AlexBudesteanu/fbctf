@@ -18,11 +18,11 @@ For more information, see the [Admin Guide](https://github.com/facebook/fbctf/wi
 
 # Installation
 
-The FBCTF platform was designed with flexibility in mind, allowing for different types of installations depending on the needs of the end user. The FBCTF platform can be installed either in Development Mode, or Production Mode. Development is for development, and Production is intended for live events utilizing the FBCTF platform. 
+The FBCTF platform was designed with flexibility in mind, allowing for different types of installations depending on the needs of the end user. The FBCTF platform can be installed either in Development Mode, or Production Mode.
 
-[Development Installation Guide](https://github.com/facebook/fbctf/wiki/Installation-Guide,-Development)
+[Quick Setup Guide](https://github.com/facebook/fbctf/wiki/Quick-Setup-Guide) (_Recommended Installation_)
 
-[Production Installation Guide](https://github.com/facebook/fbctf/wiki/Installation-Guide,-Production) 
+The [Quick Setup Guide](https://github.com/facebook/fbctf/wiki/Quick-Setup-Guide) details the quick setup mode which provides a streamlined and consistent build of the platform but offers less flexibility when compared to a custom installation. If you would prefer to perform a custom installation, please see the [Development Installation Guide](https://github.com/facebook/fbctf/wiki/Installation-Guide,-Development) or [Production Installation Guide](https://github.com/facebook/fbctf/wiki/Installation-Guide,-Production).
 
 ## Reporting an Issue
 
@@ -36,9 +36,11 @@ You’ve used it, now you want to make it better? Awesome! Pull requests are wel
 
 Facebook also has [bug bounty program](https://www.facebook.com/whitehat/) that includes FBCTF. If you find a security vulnerability in the platform, please submit it via the process outlined on that page and do not file a public issue.
 
+Feel free to join our slack by registering your email here: https://fbctf-slack.herokuapp.com/
+
 ## Have more questions?
 
-Check out the [wiki pages](https://github.com/facebook/fbctf/wiki) attached to this repo.
+Check out the [wiki pages](https://github.com/facebook/fbctf/wiki) attached to this repo. You can also ask on Slack by registering your email here: https://fbctf-slack.herokuapp.com/.
 
 ## License
 
